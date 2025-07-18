@@ -8,3 +8,11 @@ wget https://raw.githubusercontent.com/hoaitranmkt/Home-Server/refs/heads/main/d
   && chmod +x docker.sh \
   && sudo ./docker.sh
 ```
+
+🧰 Install Pihole
+
+```bash
+wget https://raw.githubusercontent.com/hoaitranmkt/Home-Server/refs/heads/main/pihole -O pihole.sh \
+  && chmod +x pihole.sh \
+  && sudo ./pihole.sh
+```
