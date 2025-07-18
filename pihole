@@ -1,0 +1,41 @@
+#!/bin/bash
+set -e
+
+GREEN='\033[0;32m'
+NC='\033[0m'
+
+echo -e "${GREEN}📦 Đang chuẩn bị cài đặt Pi-hole bằng Docker...${NC}"
+
+# Cấu hình thư mục
+APP_DIR=~/services/pihole
+mkdir -p "$APP_DIR"/{etc-pihole,etc-dnsmasq.d}
+
+# Di chuyển vào thư mục
+cd "$APP_DIR" || exit 1
+
+# Tạo docker-compose.yml
+cat > docker-compose.yml <<EOF
+version: "3"
+
+services:
+  pihole:
+    container_name: pihole
+    image: pihole/pihole:latest
+    network_mode: host
+    environment:
+      TZ: 'Asia/Ho_Chi_Minh'
+      WEBPASSWORD: 'changeme'
+    volumes:
+      - ./etc-pihole:/etc/pihole
+      - ./etc-dnsmasq.d:/etc/dnsmasq.d
+    restart: unless-stopped
+EOF
+
+# Khởi động Pi-hole
+echo -e "${GREEN}🚀 Đang khởi động Pi-hole...${NC}"
+docker compose up -d
+
+# Hiển thị IP truy cập
+LOCAL_IP=$(hostname -I | awk '{print $1}')
+echo -e "${GREEN}✅ Pi-hole đã chạy tại: http://${LOCAL_IP}/admin${NC}"
+echo -e "${GREEN}🔐 Mật khẩu mặc định: changeme${NC}"
