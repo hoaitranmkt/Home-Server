@@ -4,16 +4,28 @@ set -e
 GREEN='\033[0;32m'
 NC='\033[0m'
 
-echo -e "${GREEN}📦 Đang chuẩn bị cài đặt Pi-hole bằng Docker...${NC}"
+echo -e "${GREEN}🚀 Bắt đầu cài đặt lại Pi-hole bằng Docker...${NC}"
 
-# Cấu hình thư mục
-APP_DIR=~/services/pihole
-mkdir -p "$APP_DIR"/{etc-pihole,etc-dnsmasq.d}
+# Dừng và xóa container Pi-hole nếu đang chạy
+if docker ps -a --format '{{.Names}}' | grep -qw pihole; then
+  echo -e "${GREEN}🛑 Dừng và xóa container Pi-hole cũ...${NC}"
+  docker stop pihole
+  docker rm pihole
+else
+  echo -e "${GREEN}ℹ️ Không tìm thấy container Pi-hole cũ đang chạy.${NC}"
+fi
 
-# Di chuyển vào thư mục
-cd "$APP_DIR" || exit 1
+# Xóa dữ liệu cũ
+echo -e "${GREEN}🧹 Xóa dữ liệu Pi-hole cũ...${NC}"
+sudo rm -rf ~/services/pihole
+
+# Tạo thư mục mới
+echo -e "${GREEN}📁 Tạo thư mục lưu dữ liệu mới...${NC}"
+mkdir -p ~/services/pihole/{etc-pihole,etc-dnsmasq.d}
+cd ~/services/pihole
 
 # Tạo docker-compose.yml
+echo -e "${GREEN}⚙️ Tạo file docker-compose.yml...${NC}"
 cat > docker-compose.yml <<EOF
 version: "3"
 
@@ -32,10 +44,12 @@ services:
 EOF
 
 # Khởi động Pi-hole
-echo -e "${GREEN}🚀 Đang khởi động Pi-hole...${NC}"
+echo -e "${GREEN}🚀 Khởi động Pi-hole...${NC}"
 docker compose up -d
 
-# Hiển thị IP truy cập
+# Hiển thị thông tin truy cập
 LOCAL_IP=$(hostname -I | awk '{print $1}')
-echo -e "${GREEN}✅ Pi-hole đã chạy tại: http://${LOCAL_IP}/admin${NC}"
-echo -e "${GREEN}🔐 Mật khẩu mặc định: changeme${NC}"
+echo -e "${GREEN}✅ Pi-hole đã được cài đặt lại thành công!${NC}"
+echo -e "${GREEN}🌐 Truy cập web quản lý tại: http://${LOCAL_IP}/admin${NC}"
+echo -e "${GREEN}🔐 Mật khẩu đăng nhập mặc định: changeme${NC}"
+echo -e "${GREEN}💡 Bạn có thể đổi mật khẩu bằng lệnh:\n  docker exec -it pihole pihole -a setpassword 'mật khẩu_mới'${NC}"
