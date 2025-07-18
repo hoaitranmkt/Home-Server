@@ -1,0 +1,44 @@
+#!/bin/bash
+set -e
+
+GREEN='\033[0;32m'
+NC='\033[0m'
+
+echo -e "${GREEN}🔄 Cập nhật hệ thống...${NC}"
+sudo apt update && sudo apt upgrade -y
+
+echo -e "${GREEN}🐳 Cài đặt Docker...${NC}"
+# Gỡ docker cũ nếu có
+sudo apt remove -y docker docker-engine docker.io containerd runc || true
+
+# Cài đặt gói hỗ trợ
+sudo apt install -y ca-certificates curl gnupg lsb-release
+
+# Thêm GPG key chính thức của Docker
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+  sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+
+# Thêm Docker repo
+echo \
+  "deb [arch=$(dpkg --print-architecture) \
+  signed-by=/etc/apt/keyrings/docker.gpg] \
+  https://download.docker.com/linux/ubuntu \
+  $(lsb_release -cs) stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# Cập nhật và cài Docker
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+echo -e "${GREEN}✅ Docker đã được cài đặt!${NC}"
+
+echo -e "${GREEN}🔧 Kích hoạt Docker và thêm user hiện tại vào group docker...${NC}"
+sudo systemctl enable docker
+sudo systemctl start docker
+sudo usermod -aG docker "$USER"
+
+echo -e "${GREEN}🧩 Kiểm tra Docker Compose...${NC}"
+docker compose version
+
+echo -e "${GREEN}✨ Hoàn tất! Hãy đăng xuất và đăng nhập lại để áp dụng group docker.${NC}"
