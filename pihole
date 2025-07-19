@@ -2,54 +2,126 @@
 set -e
 
 GREEN='\033[0;32m'
+RED='\033[0;31m'
 NC='\033[0m'
 
-echo -e "${GREEN}🚀 Bắt đầu cài đặt lại Pi-hole bằng Docker...${NC}"
+echo -e "${GREEN}🔧 Bắt đầu cài đặt Pi-hole trên Home Server...${NC}"
 
-# Dừng và xóa container Pi-hole nếu đang chạy
-if docker ps -a --format '{{.Names}}' | grep -qw pihole; then
-  echo -e "${GREEN}🛑 Dừng và xóa container Pi-hole cũ...${NC}"
-  docker stop pihole
-  docker rm pihole
+# ===========================
+# 1. Kiểm tra & cài Docker
+# ===========================
+if ! command -v docker &> /dev/null; then
+  echo -e "${GREEN}🐳 Cài đặt Docker...${NC}"
+  curl -fsSL https://get.docker.com | sh
 else
-  echo -e "${GREEN}ℹ️ Không tìm thấy container Pi-hole cũ đang chạy.${NC}"
+  echo -e "${GREEN}✅ Docker đã được cài sẵn${NC}"
 fi
 
-# Xóa dữ liệu cũ
-echo -e "${GREEN}🧹 Xóa dữ liệu Pi-hole cũ...${NC}"
-sudo rm -rf ~/services/pihole
+# ===========================
+# 2. Kiểm tra & cài Docker Compose (v2)
+# ===========================
+if ! command -v docker compose &> /dev/null; then
+  echo -e "${GREEN}📦 Cài đặt Docker Compose...${NC}"
+  DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.docker}
+  mkdir -p $DOCKER_CONFIG/cli-plugins
+  curl -SL https://github.com/docker/compose/releases/download/v2.27.1/docker-compose-linux-x86_64 -o $DOCKER_CONFIG/cli-plugins/docker-compose
+  chmod +x $DOCKER_CONFIG/cli-plugins/docker-compose
+else
+  echo -e "${GREEN}✅ Docker Compose đã sẵn sàng${NC}"
+fi
 
-# Tạo thư mục mới
-echo -e "${GREEN}📁 Tạo thư mục lưu dữ liệu mới...${NC}"
-mkdir -p ~/services/pihole/{etc-pihole,etc-dnsmasq.d}
-cd ~/services/pihole
+# ===========================
+# 3. Xác định IP nội bộ
+# ===========================
+PIHOLE_IP=$(ip route get 1 | awk '{print $7; exit}')
+if [[ -z "$PIHOLE_IP" ]]; then
+  echo -e "${RED}❌ Không xác định được IP nội bộ!${NC}"
+  exit 1
+fi
+echo -e "${GREEN}🌐 IP nội bộ của Pi-hole: $PIHOLE_IP${NC}"
 
-# Tạo docker-compose.yml
-echo -e "${GREEN}⚙️ Tạo file docker-compose.yml...${NC}"
-cat > docker-compose.yml <<EOF
+# ===========================
+# 4. Nhập mật khẩu Web UI
+# ===========================
+echo -ne "${GREEN}🔑 Nhập mật khẩu truy cập Web UI Pi-hole:${NC} "
+read PIHOLE_PASS_1
+echo -ne "${GREEN}🔁 Nhập lại mật khẩu để xác nhận:${NC} "
+read PIHOLE_PASS_2
+echo
+
+if [[ "$PIHOLE_PASS_1" != "$PIHOLE_PASS_2" ]]; then
+  echo -e "${RED}❌ Mật khẩu không khớp. Thoát.${NC}"
+  exit 1
+fi
+
+if [[ -z "$PIHOLE_PASS_1" ]]; then
+  PIHOLE_PASS="changeme"
+  echo -e "${GREEN}⚠️ Không nhập mật khẩu → Dùng mặc định: changeme${NC}"
+else
+  PIHOLE_PASS="$PIHOLE_PASS_1"
+fi
+
+# ===========================
+# 5. Thiết lập thư mục & timezone
+# ===========================
+PIHOLE_DIR="$HOME/pihole"
+TIMEZONE="Asia/Ho_Chi_Minh"
+
+mkdir -p "$PIHOLE_DIR/etc-pihole"
+mkdir -p "$PIHOLE_DIR/etc-dnsmasq.d"
+
+# Cho phép truy cập từ các máy khác trong mạng (fix lỗi non-local network)
+cat > "$PIHOLE_DIR/etc-dnsmasq.d/02-lan-access.conf" <<EOF
+interface=eth0
+local-service
+EOF
+
+# ===========================
+# 6. Tạo docker-compose.yml
+# ===========================
+echo -e "${GREEN}📝 Tạo file docker-compose.yml...${NC}"
+cat > "$PIHOLE_DIR/docker-compose.yml" <<EOF
 version: "3"
 
 services:
   pihole:
     container_name: pihole
     image: pihole/pihole:latest
-    network_mode: host
+    restart: unless-stopped
+    network_mode: "host"
     environment:
-      TZ: 'Asia/Ho_Chi_Minh'
-      WEBPASSWORD: 'changeme'
+      TZ: "$TIMEZONE"
+      WEBPASSWORD: "$PIHOLE_PASS"
+      FTLCONF_LOCAL_IPV4: "$PIHOLE_IP"
     volumes:
       - ./etc-pihole:/etc/pihole
       - ./etc-dnsmasq.d:/etc/dnsmasq.d
-    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
 EOF
 
-# Khởi động Pi-hole
+# ===========================
+# 7. Khởi động Pi-hole
+# ===========================
 echo -e "${GREEN}🚀 Khởi động Pi-hole...${NC}"
+cd "$PIHOLE_DIR"
 docker compose up -d
 
-# Hiển thị thông tin truy cập
-LOCAL_IP=$(hostname -I | awk '{print $1}')
-echo -e "${GREEN}✅ Pi-hole đã được cài đặt lại thành công!${NC}"
-echo -e "${GREEN}🌐 Truy cập web quản lý tại: http://${LOCAL_IP}/admin${NC}"
-echo -e "${GREEN}🔐 Mật khẩu đăng nhập mặc định: changeme${NC}"
-echo -e "${GREEN}💡 Bạn có thể đổi mật khẩu bằng lệnh:\n  docker exec -it pihole pihole -a setpassword 'mật khẩu_mới'${NC}"
+# ===========================
+# 8. Tạo mã QR truy cập
+# ===========================
+echo -e "${GREEN}📱 Tạo mã QR truy cập Web UI...${NC}"
+
+if ! command -v qrencode &> /dev/null; then
+  sudo apt update && sudo apt install -y qrencode
+fi
+
+PIHOLE_URL="http://$PIHOLE_IP/admin"
+qrencode -t UTF8 "$PIHOLE_URL"
+
+# ===========================
+# 9. Hoàn tất
+# ===========================
+echo -e "\n${GREEN}✅ Cài đặt Pi-hole hoàn tất!${NC}"
+echo -e "🔗 Truy cập Web UI: $PIHOLE_URL"
+echo -e "🔑 Mật khẩu: $PIHOLE_PASS"
